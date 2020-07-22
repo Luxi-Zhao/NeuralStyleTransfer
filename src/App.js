@@ -14,7 +14,6 @@ const stateMachine = {
   }
 }
 
-// is the event always next? - yes it is
 const reducer = (currentState, event) => stateMachine.states[currentState].on[event] || stateMachine.initial;
 
 const formatResult = ({ className, probability }) => (
@@ -25,8 +24,6 @@ const formatResult = ({ className, probability }) => (
 
 
 function App() {
-  // when a dispatch action fires, the page re-renders, App() executes, and state gets
-  // updated
   const [state, dispatch] = useReducer(reducer, stateMachine.initial);
   const [model, setModel] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
@@ -37,12 +34,12 @@ function App() {
   const next = () => dispatch('next');
 
   const loadModel = async () => {
-    next(); // transition
+    next();
 
     const mobilenetModel = await mobilenet.load();
     setModel(mobilenetModel);
 
-    next(); // transition
+    next();
   }
 
   const handleUpload = e => {
@@ -71,7 +68,7 @@ function App() {
     complete: { text: 'Reset', action: next },
   }
 
-  const { showImage, showResults } = stateMachine.states[state]; // showImage takes on the value of the key
+  const { showImage, showResults } = stateMachine.states[state];
 
   return (
     <div className="App">
