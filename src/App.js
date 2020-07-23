@@ -1,16 +1,15 @@
 import React, { useReducer, useState, useRef } from 'react';
 import * as mobilenet from '@tensorflow-models/mobilenet';
+import { Button } from '@material-ui/core';
+import CircularProgress from '@material-ui/core/CircularProgress';
 import './App.css';
 
 const stateMachine = {
-  initial: 'initial',
+  initial: 'awaitingUpload',
   states: {
-    initial: { on: { next: 'loadingModel' } },
-    loadingModel: { on: { next: 'awaitingUpload' } },
-    awaitingUpload: { on: { next: 'ready' } },
-    ready: { on: { next: 'classifying' }, showImage: true },
-    classifying: { on: { next: 'complete' } },
-    complete: { on: { next: 'awaitingUpload' }, showImage: true, showResults: true },
+    awaitingUpload: { on: { startTransfer: 'transferring' } },
+    transferring: { on: { transferDone: 'complete' }, showLoadingIcon: true },
+    complete: { on: { reset: 'awaitingUpload' }, showResult: true },
   }
 }
 
@@ -25,59 +24,116 @@ const formatResult = ({ className, probability }) => (
 
 function App() {
   const [state, dispatch] = useReducer(reducer, stateMachine.initial);
-  const [model, setModel] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
+  const [contentImageUrl, setContentImageUrl] = useState(null);
+  const [styleImageUrl, setStyleImageUrl] = useState(null);
   const [results, setResults] = useState([]);
-  const inputRef = useRef();
-  const imageRef = useRef();
+  const contentInputRef = useRef();
+  const styleInputRef = useRef();
+  const contentImageRef = useRef();
+  const styleImageRef = useRef();
 
-  const next = () => dispatch('next');
-
-  const loadModel = async () => {
-    next();
-
-    const mobilenetModel = await mobilenet.load();
-    setModel(mobilenetModel);
-
-    next();
-  }
-
-  const handleUpload = e => {
+  const handleUpload = (e, imgType) => {
     const { files } = e.target;
     if (files.length > 0) {
       const url = URL.createObjectURL(files[0]);
-      setImageUrl(url);
-
-      next();
+      if (imgType === 'content') {
+        setContentImageUrl(url);
+      } else if (imgType === 'style') {
+        setStyleImageUrl(url);
+      } else {
+        console.err('invalid upload img type');
+      }
     }
   }
 
+  const handleStyleTransfer = async () => {
+    console.log('handling style transfer')
+    dispatch('startTransfer');
+    await identify();
+    dispatch('transferDone');
+    console.log('done')
+  }
+
+  // TODO: change this logic to style transfer logic
   const identify = async () => {
-    next();
-    const results = await model.classify(imageRef.current);
+    const model = await mobilenet.load();
+    const results = await model.classify(contentImageRef.current);
     setResults(results);
-    next();
   }
 
-  const buttonProps = {
-    initial: { text: 'Load Model', action: loadModel },
-    loadingModel: { text: 'Loading Model...', action: () => { } },
-    awaitingUpload: { text: 'Upload Photo', action: () => inputRef.current.click() },
-    ready: { text: 'Identify', action: identify },
-    classifying: { text: 'Identifying', action: () => { } },
-    complete: { text: 'Reset', action: next },
+  const handleReset = () => {
+    dispatch('reset');
+    setContentImageUrl(null);
+    setStyleImageUrl(null);
   }
 
-  const { showImage, showResults } = stateMachine.states[state];
+  const { showLoadingIcon, showResult } = stateMachine.states[state];
+
 
   return (
     <div className="App">
-      {showImage && <img alt="upload-preview" src={imageUrl} ref={imageRef} />}
-      {showResults && <ul>
-        {results.map(formatResult)}
-      </ul>}
-      <input type="file" accept="image/*" ref={inputRef} onChange={handleUpload} />
-      <button onClick={buttonProps[state].action}>{buttonProps[state].text}</button>
+      {showResult && <div>
+        <ul>
+          {results.map(formatResult)}
+        </ul>
+        <Button
+          color="primary"
+          aria-label="outlined primary"
+          onClick={handleReset}
+        >
+          Reset
+        </Button>
+      </div>}
+      {showLoadingIcon && <div>
+        <CircularProgress />
+      </div>}
+      {!showResult && <div>
+        {contentImageUrl && <img alt="content-preview" src={contentImageUrl} ref={contentImageRef} />}
+        {styleImageUrl && <img alt="style-preview" src={styleImageUrl} ref={styleImageRef} />}
+
+        <input
+          id="content-file-input"
+          className="file-input"
+          type="file"
+          accept="image/*"
+          ref={contentInputRef}
+          onChange={e => handleUpload(e, 'content')}
+        />
+        <input
+          id="style-file-input"
+          className="file-input"
+          type="file"
+          accept="image/*"
+          ref={styleInputRef}
+          onChange={e => handleUpload(e, 'style')}
+        />
+        <label htmlFor="content-file-input">
+          <Button
+            color="primary"
+            aria-label="outlined primary"
+            onClick={() => contentInputRef.current.click()}
+          >
+            Upload Content Image
+          </Button>
+        </label>
+        <label htmlFor="style-file-input">
+          <Button
+            color="primary"
+            aria-label="outlined primary"
+            onClick={() => styleInputRef.current.click()}
+          >
+            Upload Style Image
+          </Button>
+        </label>
+        {contentImageUrl && styleImageUrl &&
+          <Button
+            color="primary"
+            aria-label="outlined primary"
+            onClick={handleStyleTransfer}
+          >
+            Combine
+        </Button>}
+      </div>}
     </div>
   );
 }

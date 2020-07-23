@@ -36,3 +36,10 @@
     transform: rotate(360deg);
   }
 }
+
+.file-input {
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  z-index: -1;
+}
