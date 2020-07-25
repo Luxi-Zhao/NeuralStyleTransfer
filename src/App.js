@@ -1,5 +1,6 @@
 import React, { useReducer, useState, useRef } from 'react';
-import * as mobilenet from '@tensorflow-models/mobilenet';
+// import * as mobilenet from '@tensorflow-models/mobilenet';
+import * as tf from '@tensorflow/tfjs';
 import { Button } from '@material-ui/core';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import './App.css';
@@ -49,16 +50,78 @@ function App() {
   const handleStyleTransfer = async () => {
     console.log('handling style transfer')
     dispatch('startTransfer');
-    await identify();
+    await doTransfer();
     dispatch('transferDone');
     console.log('done')
   }
 
   // TODO: change this logic to style transfer logic
-  const identify = async () => {
-    const model = await mobilenet.load();
-    const results = await model.classify(contentImageRef.current);
-    setResults(results);
+  // const identify = async () => {
+  //   const model = await mobilenet.load({});
+  //   const results = await model.classify(contentImageRef.current);
+  //   setResults(results);
+  // }
+
+  const doTransfer = async () => {
+    const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
+
+    /**
+     * Inspect model 
+     */
+    // The input size is [null, 224, 224, 3]
+    const input_s = model.inputs[0].shape;
+
+    //The output size is [null, 1000]
+    const output_s = model.outputs[0].shape;
+    console.log(`input size: ${input_s}`);
+    console.log(`output size: ${output_s}`);
+
+    //The number of layers in the model '88'
+    const len = model.layers.length;
+    console.log(`model len: ${len}`);
+
+    //this outputs the name of the 3rd layer 'conv1_relu'
+    model.layers.map(layer => {
+      console.log(`Layer: ${layer.name}`);
+    });
+    // ---------- done inspection ---------
+
+    const contentLayers = [
+      'conv_dw_13',
+      'conv_pw_13',
+    ];
+    const styleLayers = [
+      'conv_dw_1',
+      'conv_pw_1',
+      'conv_dw_2',
+      'conv_pw_2',
+      'conv_dw_3',
+      'conv_pw_3',
+      'conv_dw_4',
+      'conv_pw_4',
+      'conv_dw_5',
+      'conv_pw_5',
+    ];
+
+    //Test execution 
+    const testStyleExtractor = getFeatureMapExtractor(styleLayers, model);
+    const styleOutputs = testStyleExtractor.predict(htmlImgToTensor(styleImageRef.current));
+    console.log(styleOutputs);
+  }
+
+  // Convert image from any size to a tensor of size
+  // [1, 224, 224, 3]
+  const htmlImgToTensor = htmlImg => {
+    let tensor = tf.browser.fromPixels(htmlImg);
+    tensor = tf.image.resizeBilinear(tensor, [224, 224]);
+    tensor = tf.expandDims(tensor, 0);
+    return tensor;
+  }
+
+  const getFeatureMapExtractor = (layerNames, model) => {
+    const outputs = layerNames.map(layerName => model.getLayer(layerName).output);
+    const modifiedModel = tf.model({ inputs: model.inputs, outputs: outputs });
+    return modifiedModel;
   }
 
   const handleReset = () => {
