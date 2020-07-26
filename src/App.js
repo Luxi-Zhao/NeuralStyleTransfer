@@ -32,6 +32,7 @@ function App() {
   const styleInputRef = useRef();
   const contentImageRef = useRef();
   const styleImageRef = useRef();
+  const canvasRef = useRef();
 
   const handleUpload = (e, imgType) => {
     const { files } = e.target;
@@ -55,36 +56,8 @@ function App() {
     console.log('done')
   }
 
-  // TODO: change this logic to style transfer logic
-  // const identify = async () => {
-  //   const model = await mobilenet.load({});
-  //   const results = await model.classify(contentImageRef.current);
-  //   setResults(results);
-  // }
-
   const doTransfer = async () => {
     const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
-
-    /**
-     * Inspect model 
-     */
-    // The input size is [null, 224, 224, 3]
-    const input_s = model.inputs[0].shape;
-
-    //The output size is [null, 1000]
-    const output_s = model.outputs[0].shape;
-    console.log(`input size: ${input_s}`);
-    console.log(`output size: ${output_s}`);
-
-    //The number of layers in the model '88'
-    const len = model.layers.length;
-    console.log(`model len: ${len}`);
-
-    //this outputs the name of the 3rd layer 'conv1_relu'
-    model.layers.map(layer => {
-      console.log(`Layer: ${layer.name}`);
-    });
-    // ---------- done inspection ---------
 
     const contentLayers = [
       'conv_dw_13',
@@ -103,10 +76,16 @@ function App() {
       'conv_pw_5',
     ];
 
-    //Test execution 
-    const testStyleExtractor = getFeatureMapExtractor(styleLayers, model);
-    const styleOutputs = testStyleExtractor.predict(htmlImgToTensor(styleImageRef.current));
-    console.log(styleOutputs);
+    // //Test execution 
+    // const testStyleExtractor = getFeatureMapExtractor(styleLayers, model);
+    // const styleOutputs = testStyleExtractor.predict(htmlImgToTensor(styleImageRef.current));
+    // // styleOutputs is of shape (numLayers, featMapheight, FMwidth, FM set depth)
+
+    const styleTargets = await getStyleOutputs(model, styleLayers, htmlImgToTensor(styleImageRef.current));
+    const contentTargets = getContentOutputs(model, contentLayers, htmlImgToTensor(contentImageRef.current));
+    console.log('got targets');
+    console.log(styleTargets);
+    console.log(contentTargets);
   }
 
   // Convert image from any size to a tensor of size
@@ -124,6 +103,81 @@ function App() {
     return modifiedModel;
   }
 
+  /**
+   * Returns an **array** of gram matrices of shape (1, depth, depth)
+   * @param {*} model 
+   * @param {*} styleLayers 
+   * @param {*} styleImgTensor 
+   */
+  const getStyleOutputs = async (model, styleLayers, styleImgTensor) => {
+    const extractor = getFeatureMapExtractor(styleLayers, model);
+    const styleFeatMaps = extractor.predict(styleImgTensor);
+    // Returns an **array** of tensors
+    // Each tensor is an FM of shape (1, featMapheight, FMwidth, FM set depth)
+    // FMs are the resulting feature maps from passing a style image into the mobilenet model
+    const gramMatrices = await Promise.all(styleFeatMaps.map(ftmap => getGramMatrix(ftmap)));
+    return gramMatrices;
+  }
+
+  /**
+   * Returns an **array** of feature maps of shape (1, height, width, depth)
+   * @param {*} model 
+   * @param {*} contentLayers 
+   * @param {*} contentImgTensor 
+   */
+  const getContentOutputs = (model, contentLayers, contentImgTensor) => {
+    const extractor = getFeatureMapExtractor(contentLayers, model);
+    const contentFeatMaps = extractor.predict(contentImgTensor);
+    return contentFeatMaps;
+  }
+
+  /**
+   * Initialize a gram matrix with 0s
+   * Gram matrix is of shape (numLayers, FMDepth, FMDepth)
+   * @param {*} numLayers 
+   * @param {*} depth 
+   */
+  const getEmptyGramMatrix = (numLayers, depth) => {
+    let four_d_array = new Array(numLayers).fill(0)
+      .map(() => new Array(depth).fill(0)
+        .map(() => new Array(depth).fill(0)));
+    return four_d_array;
+  }
+
+  /**
+   * Shape of inputTensor is (1, 224, 224, depth)
+   * @param {*} inputTensor an array of tensors
+   * Input tensor shape (numLayers, FMHeight, FMWidth, numFMsInLayer/Depth)
+   * Returns an array of gram matrices of FMs for each layer
+   */
+  const getGramMatrix = async inputTensor => {
+    const arr = await inputTensor.array();
+    const numLayers = arr.length;
+    const height = arr[0].length;
+    const width = arr[0][0].length;
+    const depth = arr[0][0][0].length;
+
+    let l, i, j, d_a, d_b;
+    let retarr = getEmptyGramMatrix(numLayers, depth);
+    // Calculate einsum: np.einsum("bijc,bijd->bcd", arr, arr)
+    for (l = 0; l < numLayers; l++) {
+      for (d_a = 0; d_a < depth; d_a++) {
+        for (d_b = 0; d_b < depth; d_b++) {
+          for (i = 0; i < height; i++) {
+            for (j = 0; j < width; j++) {
+              retarr[l][d_a][d_b] += arr[l][i][j][d_a] * arr[l][i][j][d_b];
+            }
+          }
+        }
+      }
+    }
+
+    // Normalize gram matrix wrt image size
+    retarr = retarr.map(layer => layer.map(depth1 => depth1.map(depth2 => depth2 / (height * width))));
+    retarr = tf.tensor(retarr);
+    return retarr;
+  }
+
   const handleReset = () => {
     dispatch('reset');
     setContentImageUrl(null);
@@ -135,6 +189,16 @@ function App() {
 
   return (
     <div className="App">
+      <canvas
+        id="canvas"
+        ref={canvasRef}
+        width={500}
+        height={500}
+        style={{
+          border: '2px solid #000',
+          marginTop: 10,
+        }}
+      />
       {showResult && <div>
         <ul>
           {results.map(formatResult)}
