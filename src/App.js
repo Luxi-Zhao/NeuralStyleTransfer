@@ -22,6 +22,22 @@ const formatResult = ({ className, probability }) => (
   </li>
 )
 
+const contentLayers = [
+  'conv_dw_13',
+  'conv_pw_13',
+];
+const styleLayers = [
+  'conv_dw_5',
+  'conv_pw_5',
+  'conv_dw_6',
+  'conv_pw_6',
+  'conv_dw_7',
+  'conv_pw_7',
+  'conv_dw_8',
+  'conv_pw_8',
+  'conv_dw_9',
+  'conv_pw_9',
+];
 
 function App() {
   const [state, dispatch] = useReducer(reducer, stateMachine.initial);
@@ -59,39 +75,107 @@ function App() {
   const doTransfer = async () => {
     const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
 
-    const contentLayers = [
-      'conv_dw_13',
-      'conv_pw_13',
-    ];
-    const styleLayers = [
-      'conv_dw_1',
-      'conv_pw_1',
-      'conv_dw_2',
-      'conv_pw_2',
-      'conv_dw_3',
-      'conv_pw_3',
-      'conv_dw_4',
-      'conv_pw_4',
-      'conv_dw_5',
-      'conv_pw_5',
-    ];
+    const styleImgTensor = htmlImgToTensor(styleImageRef.current);
+    const contentImgTensor = htmlImgToTensor(contentImageRef.current);
 
-    // //Test execution 
-    // const testStyleExtractor = getFeatureMapExtractor(styleLayers, model);
-    // const styleOutputs = testStyleExtractor.predict(htmlImgToTensor(styleImageRef.current));
-    // // styleOutputs is of shape (numLayers, featMapheight, FMwidth, FM set depth)
+    const styleExtractor = getFeatureMapExtractor(styleLayers, model);
+    const contentExtractor = getFeatureMapExtractor(contentLayers, model);
 
-    const styleTargets = await getStyleOutputs(model, styleLayers, htmlImgToTensor(styleImageRef.current));
-    const contentTargets = getContentOutputs(model, contentLayers, htmlImgToTensor(contentImageRef.current));
-    console.log('got targets');
-    console.log(styleTargets);
-    console.log(contentTargets);
+    const styleTargets = getStyleOutputs(styleExtractor, styleImgTensor);
+    const contentTargets = getContentOutputs(contentExtractor, contentImgTensor);
+
+    // Performance evaluation:
+    // Using await, takes 6402milsec to get style and content targets
+    // Using sync, takes 6820milsec and 5422 sec to get style and content targets
+    // Not much difference, use sync for easiness
+
+    console.log('got style and content targets');
+
+    const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
+    const resultImage = tf.variable(contentImgTensor);
+
+    const epochs = 5;
+    const stepsPerEpoch = 10;
+    let epoch, step;
+    for (epoch = 0; epoch < epochs; epoch++) {
+      for (step = 0; step < stepsPerEpoch; step++) {
+        trainStep(
+          resultImage, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor);
+        console.log('.');
+      }
+    }
+    tf.browser.toPixels(resultImage.squeeze(), canvasRef.current);
+  }
+
+  // /**
+  //  * 
+  //  * @param {*} styleOutputs Arrays of 3d gram matrices (1, depth, depth)
+  //  * @param {*} contentOutputs Arrays of 4d feature maps (1, height, width, depth)
+  //  */
+  // const styleContentLoss = (model, image, styleLayers, contentLayers, styleTargets, contentTargets) => {
+  //   const styleOutputs = getStyleOutputs(model, styleLayers, image);
+  //   const contentOutputs = getContentOutputs(model, contentLayers, image);
+
+  //   const styleWeight = 0.01;
+  //   const contentWeight = 10000;
+  //   let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
+  //     tf.square(tf.sub(styleOutput, styleTargets[index]))
+  //   )));
+  //   // assert that style loss is a scalar
+  //   styleLoss *= styleWeight / styleLayers.length;
+
+  //   let contentLoss = tf.addN(contentOutputs.map((contentOutput, index) => tf.mean(
+  //     tf.square(tf.sub(contentOutput, contentTargets[index]))
+  //   )));
+  //   contentLoss *= contentWeight / contentLayers.length;
+
+  //   const loss = tf.tensor(styleLoss + contentLoss);
+  //   return loss;
+  // }
+
+  /**
+   * TODO this thing DOESN'T WORK, it's not properly applying the gradients
+   * Look at the code of the adam opitmizer, see how it updates the image variable
+   * @param {*} image a tensor
+   */
+  const trainStep = (image, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor) => {
+    const lossFunction = () => {
+      const styleOutputs = getStyleOutputs(styleExtractor, image);
+      const contentOutputs = getContentOutputs(contentExtractor, image);
+
+      const styleWeight = 1;
+      const contentWeight = 1;
+      let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
+        tf.square(tf.sub(styleOutput, styleTargets[index]))
+      )));
+      styleLoss = tf.mul(tf.div(styleLoss, styleLayers.length), styleWeight);
+
+      let contentLoss = tf.addN(contentOutputs.map((contentOutput, index) => tf.mean(
+        tf.square(tf.sub(contentOutput, contentTargets[index]))
+      )));
+      contentLoss = tf.mul(tf.div(contentLoss, contentLayers.length), contentWeight);
+
+      const loss = tf.add(styleLoss, contentLoss);
+      return loss;
+    };
+
+    const grads = tf.variableGrads(lossFunction);
+    optimizer.applyGradients(grads.grads);
+    image.assign(clip_0_1(image));
+  }
+
+  /**
+   * @param {*} image a tensor
+   */
+  const clip_0_1 = image => {
+    return tf.clipByValue(image, 0, 1);
   }
 
   // Convert image from any size to a tensor of size
   // [1, 224, 224, 3]
   const htmlImgToTensor = htmlImg => {
     let tensor = tf.browser.fromPixels(htmlImg);
+    tensor = tf.div(tensor, 255.0);
     tensor = tf.image.resizeBilinear(tensor, [224, 224]);
     tensor = tf.expandDims(tensor, 0);
     return tensor;
@@ -109,13 +193,14 @@ function App() {
    * @param {*} styleLayers 
    * @param {*} styleImgTensor 
    */
-  const getStyleOutputs = async (model, styleLayers, styleImgTensor) => {
-    const extractor = getFeatureMapExtractor(styleLayers, model);
-    const styleFeatMaps = extractor.predict(styleImgTensor);
+  const getStyleOutputs = (styleExtractor, styleImgTensor) => {
+    styleImgTensor = tf.mul(styleImgTensor, 255);
+    const styleFeatMaps = styleExtractor.predict(styleImgTensor);
+
     // Returns an **array** of tensors
     // Each tensor is an FM of shape (1, featMapheight, FMwidth, FM set depth)
     // FMs are the resulting feature maps from passing a style image into the mobilenet model
-    const gramMatrices = await Promise.all(styleFeatMaps.map(ftmap => getGramMatrix(ftmap)));
+    const gramMatrices = styleFeatMaps.map(ftmap => getGramMatrix(ftmap));
     return gramMatrices;
   }
 
@@ -125,9 +210,9 @@ function App() {
    * @param {*} contentLayers 
    * @param {*} contentImgTensor 
    */
-  const getContentOutputs = (model, contentLayers, contentImgTensor) => {
-    const extractor = getFeatureMapExtractor(contentLayers, model);
-    const contentFeatMaps = extractor.predict(contentImgTensor);
+  const getContentOutputs = (contentExtractor, contentImgTensor) => {
+    contentImgTensor = tf.mul(contentImgTensor, 255);
+    const contentFeatMaps = contentExtractor.predict(contentImgTensor);
     return contentFeatMaps;
   }
 
@@ -150,13 +235,14 @@ function App() {
    * Input tensor shape (numLayers, FMHeight, FMWidth, numFMsInLayer/Depth)
    * Returns an array of gram matrices of FMs for each layer
    */
-  const getGramMatrix = async inputTensor => {
-    const arr = await inputTensor.array();
+  const getGramMatrix = inputTensor => {
+    const arr = inputTensor.arraySync();
     const numLayers = arr.length;
     const height = arr[0].length;
     const width = arr[0][0].length;
     const depth = arr[0][0][0].length;
 
+    // Usually l = 1 (only one layer)
     let l, i, j, d_a, d_b;
     let retarr = getEmptyGramMatrix(numLayers, depth);
     // Calculate einsum: np.einsum("bijc,bijd->bcd", arr, arr)
