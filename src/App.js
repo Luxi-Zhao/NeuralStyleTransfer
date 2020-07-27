@@ -1,5 +1,4 @@
 import React, { useReducer, useState, useRef } from 'react';
-// import * as mobilenet from '@tensorflow-models/mobilenet';
 import * as tf from '@tensorflow/tfjs';
 import { Button } from '@material-ui/core';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -107,37 +106,6 @@ function App() {
     tf.browser.toPixels(resultImage.squeeze(), canvasRef.current);
   }
 
-  // /**
-  //  * 
-  //  * @param {*} styleOutputs Arrays of 3d gram matrices (1, depth, depth)
-  //  * @param {*} contentOutputs Arrays of 4d feature maps (1, height, width, depth)
-  //  */
-  // const styleContentLoss = (model, image, styleLayers, contentLayers, styleTargets, contentTargets) => {
-  //   const styleOutputs = getStyleOutputs(model, styleLayers, image);
-  //   const contentOutputs = getContentOutputs(model, contentLayers, image);
-
-  //   const styleWeight = 0.01;
-  //   const contentWeight = 10000;
-  //   let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
-  //     tf.square(tf.sub(styleOutput, styleTargets[index]))
-  //   )));
-  //   // assert that style loss is a scalar
-  //   styleLoss *= styleWeight / styleLayers.length;
-
-  //   let contentLoss = tf.addN(contentOutputs.map((contentOutput, index) => tf.mean(
-  //     tf.square(tf.sub(contentOutput, contentTargets[index]))
-  //   )));
-  //   contentLoss *= contentWeight / contentLayers.length;
-
-  //   const loss = tf.tensor(styleLoss + contentLoss);
-  //   return loss;
-  // }
-
-  /**
-   * TODO this thing DOESN'T WORK, it's not properly applying the gradients
-   * Look at the code of the adam opitmizer, see how it updates the image variable
-   * @param {*} image a tensor
-   */
   const trainStep = (image, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor) => {
     const lossFunction = () => {
       const styleOutputs = getStyleOutputs(styleExtractor, image);
@@ -196,10 +164,10 @@ function App() {
   const getStyleOutputs = (styleExtractor, styleImgTensor) => {
     styleImgTensor = tf.mul(styleImgTensor, 255);
     const styleFeatMaps = styleExtractor.predict(styleImgTensor);
-
-    // Returns an **array** of tensors
+    // Returns an **array** of tensors (FMs)
     // Each tensor is an FM of shape (1, featMapheight, FMwidth, FM set depth)
     // FMs are the resulting feature maps from passing a style image into the mobilenet model
+
     const gramMatrices = styleFeatMaps.map(ftmap => getGramMatrix(ftmap));
     return gramMatrices;
   }
@@ -217,51 +185,20 @@ function App() {
   }
 
   /**
-   * Initialize a gram matrix with 0s
-   * Gram matrix is of shape (numLayers, FMDepth, FMDepth)
-   * @param {*} numLayers 
-   * @param {*} depth 
-   */
-  const getEmptyGramMatrix = (numLayers, depth) => {
-    let four_d_array = new Array(numLayers).fill(0)
-      .map(() => new Array(depth).fill(0)
-        .map(() => new Array(depth).fill(0)));
-    return four_d_array;
-  }
-
-  /**
    * Shape of inputTensor is (1, 224, 224, depth)
-   * @param {*} inputTensor an array of tensors
-   * Input tensor shape (numLayers, FMHeight, FMWidth, numFMsInLayer/Depth)
-   * Returns an array of gram matrices of FMs for each layer
+   * @param {*} inputTensor shape (1, FMHeight, FMWidth, numFMsInLayer/Depth)
+   * Returns a gram matrix of shape (1, depth, depth)
    */
   const getGramMatrix = inputTensor => {
-    const arr = inputTensor.arraySync();
-    const numLayers = arr.length;
-    const height = arr[0].length;
-    const width = arr[0][0].length;
-    const depth = arr[0][0][0].length;
+    const numLayers = inputTensor.shape[0];
+    const height = inputTensor.shape[1];
+    const width = inputTensor.shape[2];
+    const depth = inputTensor.shape[3];
 
-    // Usually l = 1 (only one layer)
-    let l, i, j, d_a, d_b;
-    let retarr = getEmptyGramMatrix(numLayers, depth);
-    // Calculate einsum: np.einsum("bijc,bijd->bcd", arr, arr)
-    for (l = 0; l < numLayers; l++) {
-      for (d_a = 0; d_a < depth; d_a++) {
-        for (d_b = 0; d_b < depth; d_b++) {
-          for (i = 0; i < height; i++) {
-            for (j = 0; j < width; j++) {
-              retarr[l][d_a][d_b] += arr[l][i][j][d_a] * arr[l][i][j][d_b];
-            }
-          }
-        }
-      }
-    }
-
-    // Normalize gram matrix wrt image size
-    retarr = retarr.map(layer => layer.map(depth1 => depth1.map(depth2 => depth2 / (height * width))));
-    retarr = tf.tensor(retarr);
-    return retarr;
+    inputTensor = tf.transpose(inputTensor, [0, 3, 1, 2]).reshape([numLayers, depth, height * width]);
+    let gramMatrix = tf.matMul(inputTensor, tf.transpose(inputTensor, [0, 2, 1]));
+    gramMatrix = tf.div(gramMatrix, height * width);
+    return gramMatrix;
   }
 
   const handleReset = () => {
