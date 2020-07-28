@@ -15,34 +15,37 @@ const stateMachine = {
 
 const reducer = (currentState, event) => stateMachine.states[currentState].on[event] || stateMachine.initial;
 
-const formatResult = ({ className, probability }) => (
-  <li key={className}>
-    {`${className}: %${(probability * 100).toFixed(2)}`}
-  </li>
-)
-
+// const contentLayers = [
+//   'conv_dw_13',
+//   'conv_pw_13',
+// ];
+// const styleLayers = [
+//   'conv_dw_5',
+//   'conv_pw_5',
+//   'conv_dw_6',
+//   'conv_pw_6',
+//   'conv_dw_7',
+//   'conv_pw_7',
+//   'conv_dw_8',
+//   'conv_pw_8',
+//   'conv_dw_9',
+//   'conv_pw_9',
+// ];
 const contentLayers = [
-  'conv_dw_13',
-  'conv_pw_13',
+  'block5_conv2',
 ];
 const styleLayers = [
-  'conv_dw_5',
-  'conv_pw_5',
-  'conv_dw_6',
-  'conv_pw_6',
-  'conv_dw_7',
-  'conv_pw_7',
-  'conv_dw_8',
-  'conv_pw_8',
-  'conv_dw_9',
-  'conv_pw_9',
+  'block1_conv1',
+  'block2_conv1',
+  'block3_conv1',
+  'block4_conv1',
+  'block5_conv1'
 ];
 
 function App() {
   const [state, dispatch] = useReducer(reducer, stateMachine.initial);
   const [contentImageUrl, setContentImageUrl] = useState(null);
   const [styleImageUrl, setStyleImageUrl] = useState(null);
-  const [results, setResults] = useState([]);
   const contentInputRef = useRef();
   const styleInputRef = useRef();
   const contentImageRef = useRef();
@@ -72,7 +75,8 @@ function App() {
   }
 
   const doTransfer = async () => {
-    const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
+    // const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
+    const model = await tf.loadLayersModel('http://localhost:8080/model.json');
 
     const styleImgTensor = htmlImgToTensor(styleImageRef.current);
     const contentImgTensor = htmlImgToTensor(contentImageRef.current);
@@ -83,17 +87,12 @@ function App() {
     const styleTargets = getStyleOutputs(styleExtractor, styleImgTensor);
     const contentTargets = getContentOutputs(contentExtractor, contentImgTensor);
 
-    // Performance evaluation:
-    // Using await, takes 6402milsec to get style and content targets
-    // Using sync, takes 6820milsec and 5422 sec to get style and content targets
-    // Not much difference, use sync for easiness
-
     console.log('got style and content targets');
 
     const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
     const resultImage = tf.variable(contentImgTensor);
 
-    const epochs = 5;
+    const epochs = 10;
     const stepsPerEpoch = 10;
     let epoch, step;
     for (epoch = 0; epoch < epochs; epoch++) {
@@ -102,6 +101,7 @@ function App() {
           resultImage, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor);
         console.log('.');
       }
+      console.log(`Epoch #${epoch} done.`)
     }
     tf.browser.toPixels(resultImage.squeeze(), canvasRef.current);
   }
@@ -111,7 +111,7 @@ function App() {
       const styleOutputs = getStyleOutputs(styleExtractor, image);
       const contentOutputs = getContentOutputs(contentExtractor, image);
 
-      const styleWeight = 1;
+      const styleWeight = 100;
       const contentWeight = 1;
       let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
         tf.square(tf.sub(styleOutput, styleTargets[index]))
@@ -130,6 +130,7 @@ function App() {
     const grads = tf.variableGrads(lossFunction);
     optimizer.applyGradients(grads.grads);
     image.assign(clip_0_1(image));
+    tf.dispose(grads);
   }
 
   /**
@@ -223,9 +224,6 @@ function App() {
         }}
       />
       {showResult && <div>
-        <ul>
-          {results.map(formatResult)}
-        </ul>
         <Button
           color="primary"
           aria-label="outlined primary"
