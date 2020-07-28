@@ -92,8 +92,8 @@ function App() {
     const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
     const resultImage = tf.variable(contentImgTensor);
 
-    const epochs = 10;
-    const stepsPerEpoch = 10;
+    const epochs = 1;
+    const stepsPerEpoch = 100;
     let epoch, step;
     for (epoch = 0; epoch < epochs; epoch++) {
       for (step = 0; step < stepsPerEpoch; step++) {
@@ -122,15 +122,12 @@ function App() {
         tf.square(tf.sub(contentOutput, contentTargets[index]))
       )));
       contentLoss = tf.mul(tf.div(contentLoss, contentLayers.length), contentWeight);
-
       const loss = tf.add(styleLoss, contentLoss);
       return loss;
     };
 
-    const grads = tf.variableGrads(lossFunction);
-    optimizer.applyGradients(grads.grads);
+    optimizer.minimize(lossFunction, false, [image]);
     image.assign(clip_0_1(image));
-    tf.dispose(grads);
   }
 
   /**
@@ -145,7 +142,7 @@ function App() {
   const htmlImgToTensor = htmlImg => {
     let tensor = tf.browser.fromPixels(htmlImg);
     tensor = tf.div(tensor, 255.0);
-    tensor = tf.image.resizeBilinear(tensor, [224, 224]);
+    tensor = tf.image.resizeBilinear(tensor, [112, 112]);
     tensor = tf.expandDims(tensor, 0);
     return tensor;
   }
@@ -182,7 +179,10 @@ function App() {
   const getContentOutputs = (contentExtractor, contentImgTensor) => {
     contentImgTensor = tf.mul(contentImgTensor, 255);
     const contentFeatMaps = contentExtractor.predict(contentImgTensor);
-    return contentFeatMaps;
+
+    // When there is only one contentLayer, the predictor returns a single tensor
+    if (Array.isArray(contentFeatMaps)) return contentFeatMaps;
+    else return [contentFeatMaps];
   }
 
   /**
