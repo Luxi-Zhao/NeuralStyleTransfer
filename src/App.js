@@ -15,22 +15,6 @@ const stateMachine = {
 
 const reducer = (currentState, event) => stateMachine.states[currentState].on[event] || stateMachine.initial;
 
-// const contentLayers = [
-//   'conv_dw_13',
-//   'conv_pw_13',
-// ];
-// const styleLayers = [
-//   'conv_dw_5',
-//   'conv_pw_5',
-//   'conv_dw_6',
-//   'conv_pw_6',
-//   'conv_dw_7',
-//   'conv_pw_7',
-//   'conv_dw_8',
-//   'conv_pw_8',
-//   'conv_dw_9',
-//   'conv_pw_9',
-// ];
 const contentLayers = [
   'block5_conv2',
 ];
@@ -75,7 +59,6 @@ function App() {
   }
 
   const doTransfer = async () => {
-    // const model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_1.0_224/model.json');
     const model = await tf.loadLayersModel('http://localhost:8080/model.json');
 
     const styleImgTensor = htmlImgToTensor(styleImageRef.current);
