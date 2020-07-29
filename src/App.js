@@ -58,6 +58,13 @@ function App() {
     console.log('done')
   }
 
+  // const showEdgeMaps = () => {
+  //   const contentImgTensor = htmlImgToTensor(contentImageRef.current);
+  //   let { xDelta, yDelta } = highPassXY(contentImgTensor);
+  //   xDelta = clip_0_1(xDelta);
+  //   tf.browser.toPixels(xDelta.squeeze(), canvasRef.current);
+  // }
+
   const doTransfer = async () => {
     const model = await tf.loadLayersModel('http://localhost:8080/model.json');
 
@@ -76,7 +83,7 @@ function App() {
     const resultImage = tf.variable(contentImgTensor);
 
     const epochs = 1;
-    const stepsPerEpoch = 100;
+    const stepsPerEpoch = 50;
     let epoch, step;
     for (epoch = 0; epoch < epochs; epoch++) {
       for (step = 0; step < stepsPerEpoch; step++) {
@@ -94,8 +101,10 @@ function App() {
       const styleOutputs = getStyleOutputs(styleExtractor, image);
       const contentOutputs = getContentOutputs(contentExtractor, image);
 
-      const styleWeight = 100;
-      const contentWeight = 1;
+      const styleWeight = 0.1;
+      const contentWeight = 10;
+      const totalVariationWeight = 30;
+
       let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
         tf.square(tf.sub(styleOutput, styleTargets[index]))
       )));
@@ -105,7 +114,9 @@ function App() {
         tf.square(tf.sub(contentOutput, contentTargets[index]))
       )));
       contentLoss = tf.mul(tf.div(contentLoss, contentLayers.length), contentWeight);
-      const loss = tf.add(styleLoss, contentLoss);
+
+      const variationLoss = tf.mul(totalVariationLoss(image), totalVariationWeight);
+      const loss = tf.add(styleLoss, contentLoss, variationLoss);
       return loss;
     };
 
@@ -183,6 +194,19 @@ function App() {
     let gramMatrix = tf.matMul(inputTensor, tf.transpose(inputTensor, [0, 2, 1]));
     gramMatrix = tf.div(gramMatrix, height * width);
     return gramMatrix;
+  }
+
+  const highPassXY = t => {
+    const height = t.shape[1];
+    const width = t.shape[2];
+    const xDelta = tf.sub(tf.slice4d(t, [0, 0, 1, 0], [-1, -1, -1, -1]), tf.slice4d(t, [0, 0, 0, 0], [-1, -1, width - 1, -1]));
+    const yDelta = tf.sub(tf.slice4d(t, [0, 1, 0, 0], [-1, -1, -1, -1]), tf.slice4d(t, [0, 0, 0, 0], [-1, height - 1, -1, -1]));
+    return { xDelta, yDelta };
+  }
+
+  const totalVariationLoss = t => {
+    const { xDelta, yDelta } = highPassXY(t);
+    return tf.add(tf.sum(tf.abs(xDelta)), tf.sum(tf.abs(yDelta)));
   }
 
   const handleReset = () => {
