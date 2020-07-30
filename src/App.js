@@ -4,6 +4,9 @@ import { Button } from '@material-ui/core';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import './App.css';
 
+import Worker from './styleTransfer.worker.js';
+
+
 const stateMachine = {
   initial: 'awaitingUpload',
   states: {
@@ -53,9 +56,21 @@ function App() {
   const handleStyleTransfer = async () => {
     console.log('handling style transfer')
     dispatch('startTransfer');
-    await doTransfer();
-    dispatch('transferDone');
-    console.log('done')
+
+    const styleImgArr = htmlImgToTensor(styleImageRef.current).arraySync();
+    const contentImgArr = htmlImgToTensor(contentImageRef.current).arraySync();
+
+    const worker = new Worker();
+    // can only postMessage for primitives, can't do for objects
+    worker.postMessage([styleImgArr, contentImgArr]);
+    console.log('message posted to worker')
+    worker.onmessage = e => {
+      const result = e.data;
+      tf.browser.toPixels(tf.tensor(result), canvasRef.current);
+
+      dispatch('transferDone');
+      console.log('done')
+    }
   }
 
   const doTransfer = async () => {
