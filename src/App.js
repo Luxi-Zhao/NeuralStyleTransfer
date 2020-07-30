@@ -58,13 +58,6 @@ function App() {
     console.log('done')
   }
 
-  // const showEdgeMaps = () => {
-  //   const contentImgTensor = htmlImgToTensor(contentImageRef.current);
-  //   let { xDelta, yDelta } = highPassXY(contentImgTensor);
-  //   xDelta = clip_0_1(xDelta);
-  //   tf.browser.toPixels(xDelta.squeeze(), canvasRef.current);
-  // }
-
   const doTransfer = async () => {
     const model = await tf.loadLayersModel('http://localhost:8080/model.json');
 
@@ -101,9 +94,9 @@ function App() {
       const styleOutputs = getStyleOutputs(styleExtractor, image);
       const contentOutputs = getContentOutputs(contentExtractor, image);
 
-      const styleWeight = 0.1;
-      const contentWeight = 10;
-      const totalVariationWeight = 30;
+      const styleWeight = 0.01;
+      const contentWeight = 1000;
+      const totalVariationWeight = 10000;
 
       let styleLoss = tf.addN(styleOutputs.map((styleOutput, index) => tf.mean(
         tf.square(tf.sub(styleOutput, styleTargets[index]))
