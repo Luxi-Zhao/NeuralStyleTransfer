@@ -2,6 +2,7 @@ import React, { useReducer, useState, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { Button } from '@material-ui/core';
 import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgressWithLabel from './progressBar';
 import './App.css';
 
 import Worker from './styleTransfer.worker.js';
@@ -21,6 +22,8 @@ function App() {
   const [state, dispatch] = useReducer(reducer, stateMachine.initial);
   const [contentImageUrl, setContentImageUrl] = useState(null);
   const [styleImageUrl, setStyleImageUrl] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [worker, setWorker] = useState(null);
   const contentInputRef = useRef();
   const styleInputRef = useRef();
   const contentImageRef = useRef();
@@ -49,16 +52,28 @@ function App() {
     const contentImgArr = htmlImgToTensor(contentImageRef.current).arraySync();
 
     const worker = new Worker();
+    setWorker(worker);
     worker.postMessage([styleImgArr, contentImgArr]);
-    console.log('message posted to worker')
+
+  }
+
+  if (worker) {
     worker.onmessage = e => {
-      const result = e.data;
+      const styleTransferProgress = e.data.progress;
+      const result = e.data.result;
+
+      // How to incrementally set progress and updates? 
+      setProgress(styleTransferProgress);
+      console.log(`Setting progress: ${styleTransferProgress}`);
       tf.browser.toPixels(tf.tensor(result), canvasRef.current);
 
-      dispatch('transferDone');
-      console.log('done')
+      if (styleTransferProgress === 100) {
+        console.log('transfer done!!')
+        dispatch('transferDone');
+      }
     }
   }
+
 
   // Convert image from any size to a tensor of size
   // [1, 112, 112, 3]
@@ -75,6 +90,7 @@ function App() {
     dispatch('reset');
     setContentImageUrl(null);
     setStyleImageUrl(null);
+    setProgress(0);
   }
 
   const { showLoadingIcon, showResult } = stateMachine.states[state];
@@ -82,7 +98,7 @@ function App() {
 
   return (
     <div className="App">
-      <canvas
+      {<canvas
         id="canvas"
         ref={canvasRef}
         width={500}
@@ -91,7 +107,7 @@ function App() {
           border: '2px solid #000',
           marginTop: 10,
         }}
-      />
+      />}
       {showResult && <div>
         <Button
           color="primary"
@@ -103,6 +119,7 @@ function App() {
       </div>}
       {showLoadingIcon && <div>
         <CircularProgress />
+        <LinearProgressWithLabel value={progress} />
       </div>}
       {!showResult && <div>
         {contentImageUrl && <img alt="content-preview" src={contentImageUrl} ref={contentImageRef} />}

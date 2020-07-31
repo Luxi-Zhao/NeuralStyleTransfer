@@ -11,7 +11,7 @@ const styleLayers = [
     'block5_conv1'
 ];
 
-const doTransfer = async (styleImgArr, contentImgArr) => {
+const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
     console.log('In do transfer')
 
     const model = await tf.loadLayersModel('http://localhost:8080/model.json');
@@ -30,8 +30,8 @@ const doTransfer = async (styleImgArr, contentImgArr) => {
     const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
     const resultImage = tf.variable(contentImgTensor);
 
-    const epochs = 1;
-    const stepsPerEpoch = 10;
+    const epochs = 10;
+    const stepsPerEpoch = 1;
     let epoch, step;
     for (epoch = 0; epoch < epochs; epoch++) {
         for (step = 0; step < stepsPerEpoch; step++) {
@@ -39,10 +39,14 @@ const doTransfer = async (styleImgArr, contentImgArr) => {
                 resultImage, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor);
             console.log('.');
         }
+
+        // Call callback at the end of each epoch
+        const progress = (epoch + 1) / epochs * 100;
+        const intermediaryResult = resultImage.squeeze().arraySync();
+        onEpochDone(progress, intermediaryResult);
+
         console.log(`Epoch #${epoch} done.`)
     }
-
-    return resultImage.squeeze().arraySync();
 }
 
 const trainStep = (image, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor) => {
