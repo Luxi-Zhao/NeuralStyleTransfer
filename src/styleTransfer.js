@@ -25,7 +25,7 @@ const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
     const styleTargets = getStyleOutputs(styleExtractor, styleImgTensor);
     const contentTargets = getContentOutputs(contentExtractor, contentImgTensor);
 
-    console.log('got style and content targets');
+    console.log('got style and content targets. Starting to graddesc.');
 
     const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
     const resultImage = tf.variable(contentImgTensor);
@@ -42,7 +42,7 @@ const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
 
         // Call callback at the end of each epoch
         const progress = (epoch + 1) / epochs * 100;
-        const intermediaryResult = resultImage.squeeze().arraySync();
+        const intermediaryResult = await resultImage.squeeze().data();
         onEpochDone(progress, intermediaryResult);
 
         console.log(`Epoch #${epoch} done.`)
@@ -50,7 +50,7 @@ const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
 }
 
 const trainStep = (image, optimizer, styleTargets, contentTargets, styleExtractor, contentExtractor) => {
-    const lossFunction = () => {
+    const lossFunction = () => tf.tidy(() => {
         const styleOutputs = getStyleOutputs(styleExtractor, image);
         const contentOutputs = getContentOutputs(contentExtractor, image);
 
@@ -71,7 +71,7 @@ const trainStep = (image, optimizer, styleTargets, contentTargets, styleExtracto
         const variationLoss = tf.mul(totalVariationLoss(image), totalVariationWeight);
         const loss = tf.add(styleLoss, contentLoss, variationLoss);
         return loss;
-    };
+    });
 
     optimizer.minimize(lossFunction, false, [image]);
     image.assign(clip_0_1(image));

@@ -5,14 +5,14 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgressWithLabel from './progressBar';
 import './App.css';
 
-import Worker from './styleTransfer.worker.js';
+import StyleTransferWorker from './styleTransfer.worker.js';
 
 const stateMachine = {
   initial: 'awaitingUpload',
   states: {
     awaitingUpload: { on: { startTransfer: 'transferring' } },
-    transferring: { on: { transferDone: 'complete' }, showLoadingIcon: true },
-    complete: { on: { reset: 'awaitingUpload' }, showResult: true },
+    transferring: { on: { transferDone: 'complete' }, showLoadingIcon: true, showProgressBar: true },
+    complete: { on: { reset: 'awaitingUpload' }, showResult: true, showProgressBar: true },
   }
 }
 
@@ -23,7 +23,6 @@ function App() {
   const [contentImageUrl, setContentImageUrl] = useState(null);
   const [styleImageUrl, setStyleImageUrl] = useState(null);
   const [progress, setProgress] = useState(0);
-  const [worker, setWorker] = useState(null);
   const contentInputRef = useRef();
   const styleInputRef = useRef();
   const contentImageRef = useRef();
@@ -48,24 +47,16 @@ function App() {
     console.log('handling style transfer')
     dispatch('startTransfer');
 
-    const styleImgArr = htmlImgToTensor(styleImageRef.current).arraySync();
-    const contentImgArr = htmlImgToTensor(contentImageRef.current).arraySync();
+    const styleImgArr = await htmlImgToTensor(styleImageRef.current).array();
+    const contentImgArr = await htmlImgToTensor(contentImageRef.current).array();
 
-    const worker = new Worker();
-    setWorker(worker);
-    worker.postMessage([styleImgArr, contentImgArr]);
-
-  }
-
-  if (worker) {
-    worker.onmessage = e => {
+    const styleTransferWorker = new StyleTransferWorker();
+    styleTransferWorker.postMessage([styleImgArr, contentImgArr]);
+    styleTransferWorker.onmessage = e => {
       const styleTransferProgress = e.data.progress;
-      const result = e.data.result;
 
-      // How to incrementally set progress and updates? 
       setProgress(styleTransferProgress);
-      console.log(`Setting progress: ${styleTransferProgress}`);
-      tf.browser.toPixels(tf.tensor(result), canvasRef.current);
+      updateImgPreview(e.data.result, { height: 112, width: 112, depth: 3 }, canvasRef.current);
 
       if (styleTransferProgress === 100) {
         console.log('transfer done!!')
@@ -74,6 +65,38 @@ function App() {
     }
   }
 
+  function updateImgPreview(imgData, dimensions, canvas) {
+    if (canvas == null) return;
+
+    const data = imgData;
+    const height = dimensions.height;
+    const width = dimensions.width;
+    const depth = dimensions.depth;
+    console.log(`Height: ${height}, width: ${width}, depth: ${depth}`);
+    // console.log(data);
+    const multiplier = 255;
+    const bytes = new Uint8ClampedArray(width * height * 4);
+
+    for (let i = 0; i < height * width; ++i) {
+      let r, g, b, a;
+      r = data[i * 3] * multiplier;
+      g = data[i * 3 + 1] * multiplier;
+      b = data[i * 3 + 2] * multiplier;
+      a = 255;
+
+      const j = i * 4;
+      bytes[j + 0] = Math.round(r);
+      bytes[j + 1] = Math.round(g);
+      bytes[j + 2] = Math.round(b);
+      bytes[j + 3] = Math.round(a);
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const imageData = new ImageData(bytes, width, height);
+    ctx.putImageData(imageData, 0, 0);
+  }
 
   // Convert image from any size to a tensor of size
   // [1, 112, 112, 3]
@@ -93,7 +116,7 @@ function App() {
     setProgress(0);
   }
 
-  const { showLoadingIcon, showResult } = stateMachine.states[state];
+  const { showLoadingIcon, showProgressBar, showResult } = stateMachine.states[state];
 
 
   return (
@@ -101,8 +124,8 @@ function App() {
       {<canvas
         id="canvas"
         ref={canvasRef}
-        width={500}
-        height={500}
+        width={112}
+        height={112}
         style={{
           border: '2px solid #000',
           marginTop: 10,
@@ -119,6 +142,8 @@ function App() {
       </div>}
       {showLoadingIcon && <div>
         <CircularProgress />
+      </div>}
+      {showProgressBar && <div>
         <LinearProgressWithLabel value={progress} />
       </div>}
       {!showResult && <div>
