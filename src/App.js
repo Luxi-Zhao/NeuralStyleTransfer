@@ -1,7 +1,6 @@
 import React, { useReducer, useState, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
-import { Button } from '@material-ui/core';
-import CircularProgress from '@material-ui/core/CircularProgress';
+import { Button, CircularProgress, Grid, Card, CardContent, Box } from '@material-ui/core';
 import LinearProgressWithLabel from './progressBar';
 import './App.css';
 
@@ -65,15 +64,19 @@ function App() {
     }
   }
 
+  /**
+   * Adapted from 
+   * https://github.com/tensorflow/tfjs-core/blob/v1.0.0/src/ops/browser.ts#L73-L159
+   * @param {*} imgData 
+   * @param {*} dimensions 
+   * @param {*} canvas 
+   */
   function updateImgPreview(imgData, dimensions, canvas) {
     if (canvas == null) return;
 
     const data = imgData;
     const height = dimensions.height;
     const width = dimensions.width;
-    const depth = dimensions.depth;
-    console.log(`Height: ${height}, width: ${width}, depth: ${depth}`);
-    // console.log(data);
     const multiplier = 255;
     const bytes = new Uint8ClampedArray(width * height * 4);
 
@@ -119,8 +122,103 @@ function App() {
   const { showLoadingIcon, showProgressBar, showResult } = stateMachine.states[state];
 
 
+  const cardStyleLeft = {
+    marginTop: '5vw',
+    marginLeft: '10vw',
+  }
+  const cardStyleRight = {
+    marginTop: '5vw',
+    marginRight: '10vw',
+  }
+  const btnStyleLeft = {
+    marginLeft: '10vw',
+  }
+  const btnStyleRight = {
+    marginRight: '10vw',
+  }
+
   return (
     <div className="App">
+      {!showResult && <div>
+        <Grid container spacing={3}>
+          <Grid item xs={6}>
+            <Card style={cardStyleLeft}>
+              <Box
+                display="flex"
+                alignItems="center"
+                p={1}
+                m={1}
+                css={{ height: '30vw' }}>
+                <Grid item xs>
+                  {<img alt="" src={contentImageUrl} ref={contentImageRef} />}
+                </Grid>
+              </Box>
+            </Card>
+          </Grid>
+          <Grid item xs={6}>
+            <Card style={cardStyleRight}>
+              <Box
+                display="flex"
+                alignItems="center"
+                p={1}
+                m={1}
+                css={{ height: '30vw' }}>
+                {<img alt="" src={styleImageUrl} ref={styleImageRef} />}
+              </Box>
+            </Card>
+          </Grid>
+        </Grid>
+        <Grid container spacing={3}>
+          <input
+            id="content-file-input"
+            className="file-input"
+            type="file"
+            accept="image/*"
+            ref={contentInputRef}
+            onChange={e => handleUpload(e, 'content')}
+          />
+          <input
+            id="style-file-input"
+            className="file-input"
+            type="file"
+            accept="image/*"
+            ref={styleInputRef}
+            onChange={e => handleUpload(e, 'style')}
+          />
+          <Grid item xs>
+            <label htmlFor="content-file-input">
+              <Button
+                style={btnStyleLeft}
+                color="primary"
+                aria-label="outlined primary"
+                onClick={() => contentInputRef.current.click()}
+              >
+                Upload Content Image
+              </Button>
+            </label>
+          </Grid>
+          <Grid item xs>
+            <label htmlFor="style-file-input">
+              <Button
+                style={btnStyleRight}
+                color="primary"
+                aria-label="outlined primary"
+                onClick={() => styleInputRef.current.click()}
+              >
+                Upload Style Image
+              </Button>
+            </label>
+          </Grid>
+        </Grid>
+        {contentImageUrl && styleImageUrl &&
+          <Button
+            color="primary"
+            aria-label="outlined primary"
+            onClick={handleStyleTransfer}
+          >
+            Combine
+        </Button>}
+      </div>}
       {<canvas
         id="canvas"
         ref={canvasRef}
@@ -145,53 +243,6 @@ function App() {
       </div>}
       {showProgressBar && <div>
         <LinearProgressWithLabel value={progress} />
-      </div>}
-      {!showResult && <div>
-        {contentImageUrl && <img alt="content-preview" src={contentImageUrl} ref={contentImageRef} />}
-        {styleImageUrl && <img alt="style-preview" src={styleImageUrl} ref={styleImageRef} />}
-
-        <input
-          id="content-file-input"
-          className="file-input"
-          type="file"
-          accept="image/*"
-          ref={contentInputRef}
-          onChange={e => handleUpload(e, 'content')}
-        />
-        <input
-          id="style-file-input"
-          className="file-input"
-          type="file"
-          accept="image/*"
-          ref={styleInputRef}
-          onChange={e => handleUpload(e, 'style')}
-        />
-        <label htmlFor="content-file-input">
-          <Button
-            color="primary"
-            aria-label="outlined primary"
-            onClick={() => contentInputRef.current.click()}
-          >
-            Upload Content Image
-          </Button>
-        </label>
-        <label htmlFor="style-file-input">
-          <Button
-            color="primary"
-            aria-label="outlined primary"
-            onClick={() => styleInputRef.current.click()}
-          >
-            Upload Style Image
-          </Button>
-        </label>
-        {contentImageUrl && styleImageUrl &&
-          <Button
-            color="primary"
-            aria-label="outlined primary"
-            onClick={handleStyleTransfer}
-          >
-            Combine
-        </Button>}
       </div>}
     </div>
   );
