@@ -1,6 +1,6 @@
 import React, { useReducer, useState, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
-import { Button, CircularProgress, Grid, Card, Box, Divider, Slide } from '@material-ui/core';
+import { Button, CircularProgress, Grid, Card, Box, Divider, Slide, Typography } from '@material-ui/core';
 import LinearProgressWithLabel from './progressBar';
 import './App.css';
 
@@ -231,7 +231,10 @@ function App() {
                 justify="center"
                 alignItems="center">
                 <Grid item>
-                  <Card>
+                  <Typography variant="h4" gutterBottom color="primary">
+                    Result Image
+                  </Typography>
+                  <Card marginTop="2vw">
                     <canvas
                       id="canvas"
                       ref={canvasRef}
