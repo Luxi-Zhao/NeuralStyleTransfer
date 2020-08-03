@@ -6,6 +6,8 @@ import './App.css';
 
 import StyleTransferWorker from './styleTransfer.worker.js';
 
+const RESULT_IMG_SIZE = 112;
+
 const stateMachine = {
   initial: 'awaitingUpload',
   states: {
@@ -48,8 +50,13 @@ function App() {
     console.log('handling style transfer')
     dispatch('startTransfer');
 
-    const styleImgArr = await htmlImgToTensor(styleImageRef.current).array();
-    const contentImgArr = await htmlImgToTensor(contentImageRef.current).array();
+    const contentImgTensor = htmlImgToTensor(contentImageRef.current);
+    const styleImgTensor = htmlImgToTensor(styleImageRef.current);
+    const contentImgArr = await contentImgTensor.tensor.array();
+    const styleImgArr = await styleImgTensor.tensor.array();
+
+    const resultHeight = contentImgTensor.height;
+    const resultWidth = contentImgTensor.width;
 
     const styleTransferWorker = new StyleTransferWorker();
     styleTransferWorker.postMessage([styleImgArr, contentImgArr]);
@@ -57,7 +64,7 @@ function App() {
       const styleTransferProgress = e.data.progress;
 
       setProgress(styleTransferProgress);
-      updateImgPreview(e.data.result, { height: 112, width: 112, depth: 3 }, canvasRef.current);
+      updateImgPreview(e.data.result, { height: resultHeight, width: resultWidth, depth: 3 }, canvasRef.current);
 
       if (styleTransferProgress === 100) {
         console.log('transfer done!!')
@@ -103,15 +110,35 @@ function App() {
     ctx.putImageData(imageData, 0, 0);
   }
 
-  // Convert image from any size to a tensor of size
+  // Convert image from size of
+  // [height, width, 3] to a tensor of size
   // [1, 112, 112, 3]
   // TODO deal with rectangular images
   const htmlImgToTensor = htmlImg => {
+    const getNewImgSize = t => {
+      const height = t.shape[0];
+      const width = t.shape[1];
+      let resizedHeight, resizedWidth;
+      if (height > width) {
+        resizedHeight = RESULT_IMG_SIZE;
+        resizedWidth = Math.floor(width / height * RESULT_IMG_SIZE);
+      } else {
+        resizedWidth = RESULT_IMG_SIZE;
+        resizedHeight = Math.floor(height / width * RESULT_IMG_SIZE);
+      }
+      return [resizedHeight, resizedWidth];
+    }
+
     let tensor = tf.browser.fromPixels(htmlImg);
+    const [resizedHeight, resizedWidth] = getNewImgSize(tensor);
     tensor = tf.div(tensor, 255.0);
-    tensor = tf.image.resizeBilinear(tensor, [112, 112]);
+    tensor = tf.image.resizeBilinear(tensor, [resizedHeight, resizedWidth]);
     tensor = tf.expandDims(tensor, 0);
-    return tensor;
+    return {
+      tensor,
+      height: resizedHeight,
+      width: resizedWidth,
+    };
   }
 
   const handleReset = () => {
@@ -234,14 +261,10 @@ function App() {
                   <Typography variant="h4" gutterBottom color="primary">
                     Result Image
                   </Typography>
-                  <Card marginTop="2vw">
-                    <canvas
-                      id="canvas"
-                      ref={canvasRef}
-                      width={112}
-                      height={112}
-                    />
-                  </Card>
+                  <canvas
+                    id="canvas"
+                    ref={canvasRef}
+                  />
                 </Grid>
                 <Grid item>
                   {showLoadingIcon &&
