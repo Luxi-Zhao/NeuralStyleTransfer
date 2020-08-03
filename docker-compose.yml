@@ -1,0 +1,15 @@
+version: '3'
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "8080:8080"
+  client:
+    build: 
+      context: .
+      dockerfile: client/Dockerfile
+    stdin_open: true
+    ports:
+      - "3000:3000"
