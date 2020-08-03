@@ -6,7 +6,7 @@ import './App.css';
 
 import StyleTransferWorker from './styleTransfer.worker.js';
 
-const RESULT_IMG_SIZE = 112;
+const RESULT_IMG_SIZE = 224;
 
 const stateMachine = {
   initial: 'awaitingUpload',
@@ -258,23 +258,29 @@ function App() {
                 justify="center"
                 alignItems="center">
                 <Grid item>
+                  {!showReset && <Typography variant="h5" gutterBottom color="primary">
+                    Applying Style Transfer...
+                  </Typography>}
+                  {showReset && <Typography variant="h5" gutterBottom color="primary">
+                    DONE
+                  </Typography>}
+                </Grid>
+                {showLoadingIcon && <Grid item>
+                  <CircularProgress />
+                </Grid>}
+                <Grid item>
+                  {<Box width="30vw">
+                    <LinearProgressWithLabel value={progress} />
+                  </Box>}
+                </Grid>
+                <Grid item>
                   <Typography variant="h4" gutterBottom color="primary">
-                    Result Image
+                    Result Image:
                   </Typography>
                   <canvas
                     id="canvas"
                     ref={canvasRef}
                   />
-                </Grid>
-                <Grid item>
-                  {showLoadingIcon &&
-                    <CircularProgress />
-                  }
-                </Grid>
-                <Grid item>
-                  {<Box width="30vw">
-                    <LinearProgressWithLabel value={progress} />
-                  </Box>}
                 </Grid>
                 <Grid item>
                   {showReset &&
