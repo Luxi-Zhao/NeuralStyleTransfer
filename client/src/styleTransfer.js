@@ -1,5 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 
+const BASE_URL = process.env.REACT_APP_BASE_URL;
+
 const contentLayers = [
     'block5_conv2',
 ];
@@ -14,7 +16,8 @@ const styleLayers = [
 const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
     console.log('In do transfer')
 
-    const model = await tf.loadLayersModel('http://localhost:8080/model.json');
+    const modelUrl = `${BASE_URL}/model.json`;
+    const model = await tf.loadLayersModel(modelUrl);
 
     const styleImgTensor = tf.tensor(styleImgArr);
     const contentImgTensor = tf.tensor(contentImgArr);
