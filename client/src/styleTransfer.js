@@ -33,7 +33,7 @@ const doTransfer = async (styleImgArr, contentImgArr, onEpochDone) => {
     const optimizer = tf.train.adam(0.02, 0.99, undefined, 0.1);
     const resultImage = tf.variable(contentImgTensor);
 
-    const epochs = 10;
+    const epochs = 20;
     const stepsPerEpoch = 1;
     let epoch, step;
     for (epoch = 0; epoch < epochs; epoch++) {
